@@ -26,6 +26,7 @@ namespace proxy
         static void Main(string[] args)
         {
             Program program = new Program();
+            program.Connect();
 
         }
 
@@ -34,6 +35,7 @@ namespace proxy
             
 
             client = new TcpClient("127.0.0.1", 8001);
+            
             server = new TcpClient("127.0.0.1", 8000);
 
 
@@ -46,6 +48,8 @@ namespace proxy
             //Receive cureve name from server and send to client
             string curvename;// "secp256k1"
             byte[] curNameBytes = new byte[9];
+            serverStream = server.GetStream();
+            clientStream = client.GetStream();
             serverStream.Read(curNameBytes, 0, curNameBytes.Length);
             curvename = Encoding.ASCII.GetString(curNameBytes);
             Console.WriteLine("Proxy: start ECDHE in " + curvename);
