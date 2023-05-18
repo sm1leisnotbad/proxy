@@ -156,6 +156,11 @@ namespace proxy
         void Connect()
         {
 
+            Console.WriteLine("########################################");
+            Console.WriteLine("#                                      #");
+            Console.WriteLine("#    PROXY ( Controled by attacker)    #");
+            Console.WriteLine("#                                      #");
+            Console.WriteLine("########################################");
 
             ConnectToB();
             ListenToA();
