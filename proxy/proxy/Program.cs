@@ -2,12 +2,16 @@
 using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Paddings;
 using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Math.EC;
 using Org.BouncyCastle.Security;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,104 +25,152 @@ namespace proxy
         TcpClient server;
         TcpListener listener;
 
-        NetworkStream clientStream;
-        NetworkStream serverStream;
+        NetworkStream networkStream;
+
+
+        AsymmetricCipherKeyPair clientKeyPair;
+        ECPublicKeyParameters clientPublicKey;
+        ECPrivateKeyParameters clientPrivateKey;
+
+        AsymmetricCipherKeyPair serverKeyPair;
+        ECPublicKeyParameters serverPublicKey;
+        ECPrivateKeyParameters serverPrivateKey;
 
         AsymmetricCipherKeyPair fakeKeyPair;
         ECPublicKeyParameters fakePublicKey;
         ECPrivateKeyParameters fakePrivateKey;
 
+        ECDomainParameters curve;
+
+        byte[] buffer;
+        byte[] finalClientShareKey;
+        byte[] finalServerShareKey;
+
         static void Main(string[] args)
         {
             Program program = new Program();
             program.Connect();
+            Console.ReadKey();
 
         }
 
-        void Connect()
+        void changeCurvebyName(string name)
         {
-            
-
-            client = new TcpClient("127.0.0.1", 8001);
-            
-            server = new TcpClient("127.0.0.1", 8000);
-
-
-            MITM();
-
+            X9ECParameters parameter = SecNamedCurves.GetByName(name);
+            curve = new ECDomainParameters(parameter);
         }
 
-        void GetClientPublicKey()
+        void generatingFakeKeypair()
         {
-            byte[] fakePublicKeyInByte = fakePublicKey.Q.GetEncoded();
-            clientStream.Write(fakePublicKeyInByte, 0, fakePublicKeyInByte.Length);
+            SecureRandom random = new SecureRandom();
 
-            byte[] realPublicKeyClientInByte = new byte[fakePublicKeyInByte.Length];
-            clientStream.Read(realPublicKeyClientInByte, 0, realPublicKeyClientInByte.Length);
-
-
-            //save secret
-            ECPublicKeyParameters RealClientPublicKey = new ECPublicKeyParameters(
-                "ECDSA",
-                fakePublicKey.Parameters.Curve.DecodePoint(realPublicKeyClientInByte),
-                fakePublicKey.Parameters
-                 );
-            IBasicAgreement agree = AgreementUtilities.GetBasicAgreement("ECDH");
-            agree.Init(fakePrivateKey);
-            byte[] ClientSecret = agree.CalculateAgreement(RealClientPublicKey).ToByteArray();
-            Console.WriteLine("Client Secret: ", Convert.ToBase64String(ClientSecret));
-            File.WriteAllText("client_secret.txt", Convert.ToBase64String(ClientSecret));
-
-        }
-
-        void GetServerPublicKey()
-        {
-            byte[] fakePublicKeyInByte = fakePublicKey.Q.GetEncoded();
-            serverStream.Write(fakePublicKeyInByte, 0, fakePublicKeyInByte.Length);
-
-            byte[] realPublicKeyServerInByte = new byte[fakePublicKeyInByte.Length];
-            clientStream.Read(realPublicKeyServerInByte, 0, realPublicKeyServerInByte.Length);
-
-
-            //save secret
-            ECPublicKeyParameters RealSeverPublicKey = new ECPublicKeyParameters(
-                "ECDSA",
-                fakePublicKey.Parameters.Curve.DecodePoint(realPublicKeyServerInByte),
-                fakePublicKey.Parameters
-            );
-            IBasicAgreement agree = AgreementUtilities.GetBasicAgreement("ECDH");
-            agree.Init(fakePrivateKey);
-
-            byte[] ServerSecret = agree.CalculateAgreement(RealSeverPublicKey).ToByteArray();
-            Console.WriteLine("Server secret: ", Convert.ToBase64String(ServerSecret));
-            File.WriteAllText("sever_secret.txt", Convert.ToBase64String(ServerSecret));
-        }
-
-        void MITM()
-        {
-            //Receive cureve name from server and send to client
-            string curvename;// "secp256k1"
-            byte[] curNameBytes = new byte[9];
-            serverStream = server.GetStream();
-            clientStream = client.GetStream();
-            serverStream.Read(curNameBytes, 0, curNameBytes.Length);
-            curvename = Encoding.ASCII.GetString(curNameBytes);
-            Console.WriteLine("Proxy: start ECDHE in " + curvename);
-            serverStream.Flush();
-            clientStream.Write(curNameBytes, 0, curNameBytes.Length);
-
-
-            //Calculate fake public key and send to client and server
-            X9ECParameters curveParam = SecNamedCurves.GetByName(curvename);
-            ECDomainParameters curve = new ECDomainParameters(curveParam);
-            ECKeyGenerationParameters keyGenParam = new ECKeyGenerationParameters(curve, new SecureRandom());
-            ECKeyPairGenerator gen = new ECKeyPairGenerator();
-            gen.Init(keyGenParam);
-
-            fakeKeyPair = gen.GenerateKeyPair();
+            ECKeyGenerationParameters param_for_key = new ECKeyGenerationParameters(curve, random);
+            ECKeyPairGenerator generator = new ECKeyPairGenerator();
+            generator.Init(param_for_key);
+            fakeKeyPair = generator.GenerateKeyPair();
             fakePublicKey = (ECPublicKeyParameters)fakeKeyPair.Public;
             fakePrivateKey = (ECPrivateKeyParameters)fakeKeyPair.Private;
+            Console.WriteLine("Fake key generation completed!!!");
+            Console.WriteLine("Fake Public Key");
+            Console.WriteLine("X : " + fakePublicKey.Q.XCoord.ToString());
+            Console.WriteLine("Y : " + fakePublicKey.Q.YCoord.ToString());
+        }
+
+        void getOtherPublicKey(int who) //who = 0: client, who = 1: server
+        {
+            int bytesRead;
+            if (who == 1)
+            {
+                networkStream = server.GetStream();
+                bytesRead = server.ReceiveBufferSize;
+            }
+            else
+            {
+                networkStream = client.GetStream();
+                bytesRead = client.ReceiveBufferSize;
+            }
+            buffer = new byte[bytesRead];
+
+            int len = networkStream.Read(buffer, 0, bytesRead);
+            byte[] pub = new byte[len];
+            Buffer.BlockCopy(buffer, 0, pub, 0, len);
+            ECPoint point = fakePublicKey.Parameters.Curve.DecodePoint(pub);
+            ECPublicKeyParameters otherPublicKey = new ECPublicKeyParameters(point, curve);
+
+            IBasicAgreement ok = AgreementUtilities.GetBasicAgreement("ECDH");
+            ok.Init(fakePrivateKey);
+            byte[] sharekey = ok.CalculateAgreement(otherPublicKey).ToByteArray();
+            if (who == 1)
+                finalServerShareKey = sharekey;
+            else
+                finalClientShareKey = sharekey;
+            Console.WriteLine("Calculating share key completed!!!");
+            if (who == 0)
+                Console.Write("Client share key: ");
+            else
+                Console.Write("Server share key: ");
+
+            Console.Write(BitConverter.ToString(sharekey).Replace("-", String.Empty));
+            Console.WriteLine("");
+        }
+
+        void sendPublicKey(int who) //who = 0: client, who = 1: server
+        {
+            buffer = fakePublicKey.Q.GetEncoded();
+            if (who == 0)
+                networkStream = client.GetStream();
+            else
+                networkStream = server.GetStream();
+            networkStream.Write(buffer, 0, buffer.Length);
+            networkStream.Flush();
+        }
+
+
+        void ListenToA()
+        {
+            Console.WriteLine("Waiting for A to connect...");
+            listener = new TcpListener(IPAddress.Any , 10000);
+            listener.Start();
+            client = listener.AcceptTcpClient();
+            Console.WriteLine("A connect successfully!");
+        }
+
+        void ConnectToB()
+        {
+            Console.WriteLine("Attemp connecting to B...");
+            //this feature will be add when ngrok
+            /*
+            string servername = "";
+            var address = Dns.GetHostAddresses(servername);
+            Debug.Assert(address.Length != 0);
+            var endPoint = new IPEndPoint(address[0], 8080);
+
+            server = new TcpClient(endPoint);
+            */
+
+            Console.WriteLine("Connectint to B...");
+            server = new TcpClient("localhost", 8080);
+            Console.WriteLine("Connecting to B successfully!");
+        }
+        
+        void Connect()
+        {
+
+
+            ConnectToB();
+            ListenToA();
+            changeCurvebyName("secp256k1");
+            generatingFakeKeypair();
+            Console.WriteLine("Begin transferring key!!!");
+
+            //-------------------------------------------------
+            getOtherPublicKey(0);
+            sendPublicKey(0);
+            sendPublicKey(1);
+            getOtherPublicKey(1);
+            //-------------------------------------------------
 
         }
+
     }
 }

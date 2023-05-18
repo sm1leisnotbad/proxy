@@ -1,0 +1,11 @@
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\obj\Debug\proxy.csproj.AssemblyReference.cache
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\obj\Debug\proxy.csproj.SuggestedBindingRedirects.cache
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\obj\Debug\proxy.csproj.CoreCompileInputs.cache
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\bin\Debug\proxy.exe.config
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\bin\Debug\proxy.exe
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\bin\Debug\proxy.pdb
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\bin\Debug\BouncyCastle.Crypto.dll
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\bin\Debug\BouncyCastle.Crypto.xml
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\obj\Debug\proxy.csproj.CopyComplete
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\obj\Debug\proxy.exe
+C:\Users\tphat\OneDrive\Documents\GitHub\proxy\proxy\proxy\obj\Debug\proxy.pdb
